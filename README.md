@@ -50,6 +50,8 @@ A small causal sequence model is trained as a shared observer across these condi
 ```text
 README.md
 
+run_shared_observer.sh
+
 src/
 	data_utils.py
 	models.py
@@ -70,6 +72,3 @@ outputs/
 		metrics/
 		figures/
 		ckpt/
-
-slurm/
-	run_shared_observer.sh
