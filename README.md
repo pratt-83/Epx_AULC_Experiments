@@ -24,9 +24,8 @@ The training loop uses one shared observer. At each optimization step, the scrip
 ```text
 README.md
 run_example.sh
-run_microbial_20k_2048bp_v1.sh
-run_microbial_100k_2048bp_v1.sh
-run_smoke_test_v100_hyena.sh
+run_microbial_20k_2048bp_v1.sh	# not tracked; [experiment_id] = microbial_20k_2048bp_v1
+
 
 data/
   README.md
