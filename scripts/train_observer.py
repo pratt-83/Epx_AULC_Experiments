@@ -248,6 +248,42 @@ def main() -> None:
 	log_csv_path.write_text("step,loss_real,loss_shuf,loss_rand\n")
 	rng = random.Random(args.seed)
 
+	# Log a true pre-training evaluation so L0 reflects the untrained model.
+	loss_real = eval_loss(
+		model=model,
+		examples=real_val,
+		device=device,
+		batch_size=args.batch_size,
+		n_batches=args.eval_batches,
+		seed=args.seed + 1000,
+	)
+	loss_shuf = eval_loss(
+		model=model,
+		examples=shuf_val,
+		device=device,
+		batch_size=args.batch_size,
+		n_batches=args.eval_batches,
+		seed=args.seed + 2000,
+	)
+	loss_rand = eval_loss(
+		model=model,
+		examples=rand_val,
+		device=device,
+		batch_size=args.batch_size,
+		n_batches=args.eval_batches,
+		seed=args.seed + 3000,
+	)
+
+	with log_csv_path.open("a") as handle:
+		handle.write(f"0,{loss_real:.6f},{loss_shuf:.6f},{loss_rand:.6f}\n")
+
+	print(
+		f"step {0:>5} | "
+		f"val real {loss_real:.4f} | "
+		f"val shuf {loss_shuf:.4f} | "
+		f"val rand {loss_rand:.4f}"
+	)
+
 	for step in range(1, args.steps + 1):
 		# Sample one of the three conditions uniformly so each receives
 		# comparable optimization pressure over the run.

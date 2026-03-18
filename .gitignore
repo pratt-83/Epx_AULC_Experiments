@@ -1,0 +1,19 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+data/raw/
+data/processed/
+outputs/
+
+*.out
+*.err
+
+run_microbial_*_2048bp_v1.sh
+run_smoke_test_v100_hyena.sh
+
+experiment documentation.docx
+experiment_documentation.html
+.DS_Store
+scripts/.DS_Store
+src/.DS_Store
