@@ -39,20 +39,36 @@ def compute_t50(steps: np.ndarray, loss: np.ndarray) -> float:
 	return float(steps[indices[0]])
 
 
+def compute_t50_from_reference(
+	steps: np.ndarray,
+	loss: np.ndarray,
+	start_index: int,
+) -> float:
+	"""
+	Return the first step where the curve achieves half of its eventual drop
+	using a specified starting point on the logged curve.
+	"""
+	return compute_t50(steps[start_index:], loss[start_index:])
+
+
 def summarize_curve(steps: np.ndarray, loss: np.ndarray) -> Dict[str, float]:
 	"""
 	Summarize one loss curve into the core pilot metrics.
 	"""
-	loss_start = float(loss[0])
-	loss_final = float(loss[-1])
+	loss_pre = float(loss[0])
+	loss_start_obs = float(loss[1]) if len(loss) > 1 else loss_pre
+	loss_final_obs = float(loss[-1])
 
 	return {
-		"L0": loss_start,
-		"LT": loss_final,
-		"delta_L": float(loss_start - loss_final),
-		"t50_step": compute_t50(steps, loss),
+		"L0_pre": loss_pre,
+		"L_start_obs": loss_start_obs,
+		"LT_obs": loss_final_obs,
+		"delta_L_from_pre": float(loss_pre - loss_final_obs),
+		"delta_L_obs": float(loss_start_obs - loss_final_obs),
+		"t50_step_from_pre": compute_t50_from_reference(steps, loss, start_index=0),
+		"t50_step_obs": compute_t50_from_reference(steps, loss, start_index=1 if len(loss) > 1 else 0),
 		"AULC_raw": trapz_auc(steps, loss),
-		"AULC_above_final": trapz_auc(steps, loss - loss_final),
+		"AULC_above_final_observed": trapz_auc(steps, loss - loss_final_obs),
 	}
 
 
@@ -96,4 +112,3 @@ def summarize_all_curves(steps: np.ndarray, curves: Dict[str, np.ndarray]) -> Di
 		summary[condition_name] = summarize_curve(steps, loss_curve)
 
 	return summary
-

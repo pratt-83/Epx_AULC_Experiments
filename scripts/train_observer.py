@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
 	sys.path.insert(0, str(REPO_ROOT))
 
+from src.hyena_observer import TinyCausalHyenaLM
 from src.models import TinyCausalTransformer
 
 
@@ -167,9 +168,22 @@ def main() -> None:
 		help="Number of sampled validation batches per evaluation",
 	)
 	parser.add_argument("--d_model", type=int, default=512)
+	parser.add_argument(
+		"--model",
+		choices=("transformer", "hyena"),
+		default="transformer",
+		help="Observer architecture to train",
+	)
 	parser.add_argument("--n_heads", type=int, default=8)
 	parser.add_argument("--n_layers", type=int, default=6)
 	parser.add_argument("--dropout", type=float, default=0.1)
+	parser.add_argument("--hyena_order", type=int, default=2)
+	parser.add_argument("--hyena_filter_order", type=int, default=64)
+	parser.add_argument(
+		"--hyena_use_abs_pos",
+		action="store_true",
+		help="If set, add absolute positional embeddings to the Hyena observer",
+	)
 	parser.add_argument("--lr", type=float, default=3e-4)
 	parser.add_argument("--seed", type=int, default=1)
 	parser.add_argument(
@@ -191,7 +205,7 @@ def main() -> None:
 	ckpt_dir.mkdir(parents=True, exist_ok=True)
 
 	log_csv_path = log_dir / "loss_curves.csv"
-	ckpt_path = ckpt_dir / "tiny_observer.pt"
+	ckpt_path = ckpt_dir / f"{args.model}_observer.pt"
 
 	real_train = load_windows(data_dir / "real_train.txt", args.seq_len)
 	shuf_train = load_windows(data_dir / "shuf_train.txt", args.seq_len)
@@ -205,19 +219,70 @@ def main() -> None:
 
 	device = "cuda" if torch.cuda.is_available() else "cpu"
 
-	model = TinyCausalTransformer(
-		vocab_size=len(TOKENS),
-		seq_len_in=args.seq_len - 1,
-		d_model=args.d_model,
-		n_heads=args.n_heads,
-		n_layers=args.n_layers,
-		dropout=args.dropout,
-	).to(device)
+	if args.model == "transformer":
+		model = TinyCausalTransformer(
+			vocab_size=len(TOKENS),
+			seq_len_in=args.seq_len - 1,
+			d_model=args.d_model,
+			n_heads=args.n_heads,
+			n_layers=args.n_layers,
+			dropout=args.dropout,
+		)
+	else:
+		model = TinyCausalHyenaLM(
+			vocab_size=len(TOKENS),
+			seq_len_in=args.seq_len - 1,
+			d_model=args.d_model,
+			n_layers=args.n_layers,
+			dropout=args.dropout,
+			hyena_order=args.hyena_order,
+			hyena_filter_order=args.hyena_filter_order,
+			use_abs_pos=args.hyena_use_abs_pos,
+		)
+
+	model = model.to(device)
 
 	optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+	print(f"Training model={args.model} on device={device}")
 
 	log_csv_path.write_text("step,loss_real,loss_shuf,loss_rand\n")
 	rng = random.Random(args.seed)
+
+	# Log a true pre-training evaluation so L0 reflects the untrained model.
+	loss_real = eval_loss(
+		model=model,
+		examples=real_val,
+		device=device,
+		batch_size=args.batch_size,
+		n_batches=args.eval_batches,
+		seed=args.seed + 1000,
+	)
+	loss_shuf = eval_loss(
+		model=model,
+		examples=shuf_val,
+		device=device,
+		batch_size=args.batch_size,
+		n_batches=args.eval_batches,
+		seed=args.seed + 2000,
+	)
+	loss_rand = eval_loss(
+		model=model,
+		examples=rand_val,
+		device=device,
+		batch_size=args.batch_size,
+		n_batches=args.eval_batches,
+		seed=args.seed + 3000,
+	)
+
+	with log_csv_path.open("a") as handle:
+		handle.write(f"0,{loss_real:.6f},{loss_shuf:.6f},{loss_rand:.6f}\n")
+
+	print(
+		f"step {0:>5} | "
+		f"val real {loss_real:.4f} | "
+		f"val shuf {loss_shuf:.4f} | "
+		f"val rand {loss_rand:.4f}"
+	)
 
 	for step in range(1, args.steps + 1):
 		# Sample one of the three conditions uniformly so each receives
@@ -288,4 +353,3 @@ def main() -> None:
 
 if __name__ == "__main__":
 	main()
-
