@@ -1,6 +1,6 @@
 # Epiplexity Heuristic AULC Experiments
 
-This repository is an experimental workspace for measuring epiplexity-style learnability from validation-loss trajectories on genomic sequence. The pipeline builds matched real and control datasets, trains a shared observer across conditions, logs per-condition validation curves, and summarizes those curves with AULC-style metrics.
+This repository is for measuring epiplexity learnability from validation-loss trajectories on genomic sequence. The pipeline builds matched real and control datasets, trains a shared observer across conditions, logs per-condition validation curves, and summarizes those curves with AULC metrics.
 
 The codebase currently supports two observer backends:
 
@@ -8,8 +8,6 @@ The codebase currently supports two observer backends:
 - `hyena`: a small causal Hyena language model for longer-range sequence modeling
 
 ## Current experiment design
-
-The core question is whether real genomic windows are easier to learn under a fixed optimization budget than matched controls.
 
 Each experiment uses three sequence conditions:
 
