@@ -39,36 +39,20 @@ def compute_t50(steps: np.ndarray, loss: np.ndarray) -> float:
 	return float(steps[indices[0]])
 
 
-def compute_t50_from_reference(
-	steps: np.ndarray,
-	loss: np.ndarray,
-	start_index: int,
-) -> float:
-	"""
-	Return the first step where the curve achieves half of its eventual drop
-	using a specified starting point on the logged curve.
-	"""
-	return compute_t50(steps[start_index:], loss[start_index:])
-
-
 def summarize_curve(steps: np.ndarray, loss: np.ndarray) -> Dict[str, float]:
 	"""
 	Summarize one loss curve into the core pilot metrics.
 	"""
-	loss_pre = float(loss[0])
-	loss_start_obs = float(loss[1]) if len(loss) > 1 else loss_pre
-	loss_final_obs = float(loss[-1])
+	loss_start = float(loss[0])
+	loss_final = float(loss[-1])
 
 	return {
-		"L0_pre": loss_pre,
-		"L_start_obs": loss_start_obs,
-		"LT_obs": loss_final_obs,
-		"delta_L_from_pre": float(loss_pre - loss_final_obs),
-		"delta_L_obs": float(loss_start_obs - loss_final_obs),
-		"t50_step_from_pre": compute_t50_from_reference(steps, loss, start_index=0),
-		"t50_step_obs": compute_t50_from_reference(steps, loss, start_index=1 if len(loss) > 1 else 0),
+		"L0": loss_start,
+		"LT": loss_final,
+		"delta_L": float(loss_start - loss_final),
+		"t50_step": compute_t50(steps, loss),
 		"AULC_raw": trapz_auc(steps, loss),
-		"AULC_above_final_observed": trapz_auc(steps, loss - loss_final_obs),
+		"AULC_above_final": trapz_auc(steps, loss - loss_final),
 	}
 
 
@@ -81,7 +65,8 @@ def load_loss_curve_csv(csv_path: Path) -> Tuple[np.ndarray, Dict[str, np.ndarra
 	Load the standard loss-curve CSV written by train_observer.py.
 
 	Expected columns:
-		step,loss_real,loss_shuf,loss_rand
+		step,loss_CDS_high,loss_intergenic_high,loss_RNA_enriched,
+		loss_pseudogene_enriched,loss_boundary_mixed,loss_mixed_other
 	"""
 	if not csv_path.exists():
 		raise FileNotFoundError(f"Loss curve CSV not found: {csv_path}")
@@ -90,9 +75,12 @@ def load_loss_curve_csv(csv_path: Path) -> Tuple[np.ndarray, Dict[str, np.ndarra
 	steps = data["step"].astype(float)
 
 	curves = {
-		"real": data["loss_real"].astype(float),
-		"shuf": data["loss_shuf"].astype(float),
-		"rand": data["loss_rand"].astype(float),
+		"CDS_high": data["loss_CDS_high"].astype(float),
+		"intergenic_high": data["loss_intergenic_high"].astype(float),
+		"RNA_enriched": data["loss_RNA_enriched"].astype(float),
+		"pseudogene_enriched": data["loss_pseudogene_enriched"].astype(float),
+		"boundary_mixed": data["loss_boundary_mixed"].astype(float),
+		"mixed_other": data["loss_mixed_other"].astype(float),
 	}
 
 	return steps, curves
@@ -112,3 +100,4 @@ def summarize_all_curves(steps: np.ndarray, curves: Dict[str, np.ndarray]) -> Di
 		summary[condition_name] = summarize_curve(steps, loss_curve)
 
 	return summary
+	

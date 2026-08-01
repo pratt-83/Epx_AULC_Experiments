@@ -1,0 +1,75 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: annotation-hyena
+spec:
+  backoffLimit: 0
+
+  template:
+    metadata:
+      labels:
+        app: annotation-hyena
+
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: hyena
+          image: npratt98/epiplexity:latest
+          imagePullPolicy: Always
+          workingDir: /workspace
+
+          command:
+            - /bin/bash
+            - -lc
+
+          args:
+            - |
+              set -e
+
+              echo "Starting Hyena training"
+              nvidia-smi
+
+              python scripts/train_observer.py \
+                --experiment_id microbial_annotation_512bp_v1 \
+                --processed_root data/processed \
+                --outputs_root /results \
+                --model hyena \
+                --seq_len 512 \
+                --steps 30000 \
+                --batch_size 12 \
+                --eval_every 50 \
+                --eval_batches 50 \
+                --d_model 512 \
+                --n_layers 6 \
+                --dropout 0.1 \
+                --hyena_order 2 \
+                --hyena_filter_order 64 \
+                --lr 3e-4 \
+                --seed 1 \
+                --save_ckpt
+
+              python scripts/calc_aulc.py \
+                --experiment_id microbial_annotation_512bp_v1 \
+                --outputs_root /results
+
+              echo "Hyena job completed"
+
+          resources:
+            requests:
+              cpu: "8"
+              memory: 32Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "8"
+              memory: 32Gi
+              nvidia.com/gpu: "1"
+
+          volumeMounts:
+            - name: results-storage
+              mountPath: /results
+
+      volumes:
+        - name: results-storage
+          persistentVolumeClaim:
+            claimName: epiplexity-hyena-storage

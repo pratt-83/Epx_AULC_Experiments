@@ -140,7 +140,7 @@ def main() -> None:
 	parser.add_argument(
 		"--seq_len",
 		type=int,
-		default=2048,
+		default=512,
 		help="Dataset window length",
 	)
 	parser.add_argument(
@@ -196,7 +196,7 @@ def main() -> None:
 	random.seed(args.seed)
 	torch.manual_seed(args.seed)
 
-	data_dir = Path(args.processed_root) / args.experiment_id
+	data_dir = Path(args.processed_root) / args.experiment_id / "real_bucket_files"
 	output_dir = Path(args.outputs_root) / args.experiment_id
 	log_dir = output_dir / "logs"
 	ckpt_dir = output_dir / "ckpt"
@@ -207,15 +207,64 @@ def main() -> None:
 	log_csv_path = log_dir / "loss_curves.csv"
 	ckpt_path = ckpt_dir / f"{args.model}_observer.pt"
 
-	real_train = load_windows(data_dir / "real_train.txt", args.seq_len)
-	shuf_train = load_windows(data_dir / "shuf_train.txt", args.seq_len)
-	rand_train = load_windows(data_dir / "rand_train.txt", args.seq_len)
+	CDS_high_train = load_windows(
+		data_dir / "train_CDS_high_real.txt",
+		args.seq_len,
+	)
+	intergenic_high_train = load_windows(
+		data_dir / "train_intergenic_high_real.txt",
+		args.seq_len,
+	)
+	RNA_enriched_train = load_windows(
+		data_dir / "train_RNA_enriched_real.txt",
+		args.seq_len,
+	)
+	pseudogene_enriched_train = load_windows(
+		data_dir / "train_pseudogene_enriched_real.txt",
+		args.seq_len,
+	)
+	boundary_mixed_train = load_windows(
+		data_dir / "train_boundary_mixed_real.txt",
+		args.seq_len,
+	)
+	mixed_other_train = load_windows(
+		data_dir / "train_mixed_other_real.txt",
+		args.seq_len,
+	)
 
-	real_val = load_windows(data_dir / "real_val.txt", args.seq_len)
-	shuf_val = load_windows(data_dir / "shuf_val.txt", args.seq_len)
-	rand_val = load_windows(data_dir / "rand_val.txt", args.seq_len)
+	CDS_high_val = load_windows(
+		data_dir / "val_CDS_high_real.txt",
+		args.seq_len,
+	)
+	intergenic_high_val = load_windows(
+		data_dir / "val_intergenic_high_real.txt",
+		args.seq_len,
+	)
+	RNA_enriched_val = load_windows(
+		data_dir / "val_RNA_enriched_real.txt",
+		args.seq_len,
+	)
+	pseudogene_enriched_val = load_windows(
+		data_dir / "val_pseudogene_enriched_real.txt",
+		args.seq_len,
+	)
+	boundary_mixed_val = load_windows(
+		data_dir / "val_boundary_mixed_real.txt",
+		args.seq_len,
+	)
+	mixed_other_val = load_windows(
+		data_dir / "val_mixed_other_real.txt",
+		args.seq_len,
+	)
 
-	train_sets: List[List[torch.Tensor]] = [real_train, shuf_train, rand_train]
+	train_sets: List[List[torch.Tensor]] = [
+		CDS_high_train,
+		intergenic_high_train,
+		RNA_enriched_train,
+		pseudogene_enriched_train,
+		boundary_mixed_train,
+		mixed_other_train,
+	]
 
 	device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -245,49 +294,21 @@ def main() -> None:
 	optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
 	print(f"Training model={args.model} on device={device}")
 
-	log_csv_path.write_text("step,loss_real,loss_shuf,loss_rand\n")
+	log_csv_path.write_text(
+		"step,"
+		"loss_CDS_high,"
+		"loss_intergenic_high,"
+		"loss_RNA_enriched,"
+		"loss_pseudogene_enriched,"
+		"loss_boundary_mixed,"
+		"loss_mixed_other\n"
+	)
 	rng = random.Random(args.seed)
 
-	# Log a true pre-training evaluation so L0 reflects the untrained model.
-	loss_real = eval_loss(
-		model=model,
-		examples=real_val,
-		device=device,
-		batch_size=args.batch_size,
-		n_batches=args.eval_batches,
-		seed=args.seed + 1000,
-	)
-	loss_shuf = eval_loss(
-		model=model,
-		examples=shuf_val,
-		device=device,
-		batch_size=args.batch_size,
-		n_batches=args.eval_batches,
-		seed=args.seed + 2000,
-	)
-	loss_rand = eval_loss(
-		model=model,
-		examples=rand_val,
-		device=device,
-		batch_size=args.batch_size,
-		n_batches=args.eval_batches,
-		seed=args.seed + 3000,
-	)
-
-	with log_csv_path.open("a") as handle:
-		handle.write(f"0,{loss_real:.6f},{loss_shuf:.6f},{loss_rand:.6f}\n")
-
-	print(
-		f"step {0:>5} | "
-		f"val real {loss_real:.4f} | "
-		f"val shuf {loss_shuf:.4f} | "
-		f"val rand {loss_rand:.4f}"
-	)
-
 	for step in range(1, args.steps + 1):
-		# Sample one of the three conditions uniformly so each receives
+		# Sample one of the six conditions uniformly so each receives
 		# comparable optimization pressure over the run.
-		condition_index = rng.randrange(3)
+		condition_index = rng.randrange(6)
 		examples = train_sets[condition_index]
 
 		batch = sample_batch(examples, args.batch_size, rng).to(device)
@@ -308,40 +329,75 @@ def main() -> None:
 		if step == 1 or step % args.eval_every == 0:
 			# Validation is computed separately for each condition even though
 			# training uses a shared observer.
-			loss_real = eval_loss(
+			loss_CDS_high = eval_loss(
 				model=model,
-				examples=real_val,
+				examples=CDS_high_val,
 				device=device,
 				batch_size=args.batch_size,
 				n_batches=args.eval_batches,
 				seed=args.seed + 1000 + step,
 			)
-			loss_shuf = eval_loss(
+			loss_intergenic_high = eval_loss(
 				model=model,
-				examples=shuf_val,
+				examples=intergenic_high_val,
 				device=device,
 				batch_size=args.batch_size,
 				n_batches=args.eval_batches,
 				seed=args.seed + 2000 + step,
 			)
-			loss_rand = eval_loss(
+			loss_RNA_enriched = eval_loss(
 				model=model,
-				examples=rand_val,
+				examples=RNA_enriched_val,
 				device=device,
 				batch_size=args.batch_size,
 				n_batches=args.eval_batches,
 				seed=args.seed + 3000 + step,
 			)
+			loss_pseudogene_enriched = eval_loss(
+				model=model,
+				examples=pseudogene_enriched_val,
+				device=device,
+				batch_size=args.batch_size,
+				n_batches=args.eval_batches,
+				seed=args.seed + 4000 + step,
+			)
+			loss_boundary_mixed = eval_loss(
+				model=model,
+				examples=boundary_mixed_val,
+				device=device,
+				batch_size=args.batch_size,
+				n_batches=args.eval_batches,
+				seed=args.seed + 5000 + step,
+			)
+			loss_mixed_other = eval_loss(
+				model=model,
+				examples=mixed_other_val,
+				device=device,
+				batch_size=args.batch_size,
+				n_batches=args.eval_batches,
+				seed=args.seed + 6000 + step,
+			)
 
 			with log_csv_path.open("a") as handle:
-				handle.write(f"{step},{loss_real:.6f},{loss_shuf:.6f},{loss_rand:.6f}\n")
+				handle.write(
+					f"{step},"
+					f"{loss_CDS_high:.6f},"
+					f"{loss_intergenic_high:.6f},"
+					f"{loss_RNA_enriched:.6f},"
+					f"{loss_pseudogene_enriched:.6f},"
+					f"{loss_boundary_mixed:.6f},"
+					f"{loss_mixed_other:.6f}\n"
+				)
 
 			print(
 				f"step {step:>5} | "
 				f"train_loss {train_loss.item():.4f} | "
-				f"val real {loss_real:.4f} | "
-				f"val shuf {loss_shuf:.4f} | "
-				f"val rand {loss_rand:.4f}"
+				f"val CDS_high {loss_CDS_high:.4f} | "
+				f"val intergenic_high {loss_intergenic_high:.4f} | "
+				f"val RNA_enriched {loss_RNA_enriched:.4f} | "
+				f"val pseudogene_enriched {loss_pseudogene_enriched:.4f} | "
+				f"val boundary_mixed {loss_boundary_mixed:.4f} | "
+				f"val mixed_other {loss_mixed_other:.4f}"
 			)
 
 	if args.save_ckpt:
@@ -353,3 +409,4 @@ def main() -> None:
 
 if __name__ == "__main__":
 	main()
+	

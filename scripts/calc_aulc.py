@@ -42,7 +42,6 @@ def main() -> None:
 
 	loss_csv_path = log_dir / "loss_curves.csv"
 	summary_json_path = metrics_dir / "aulc_summary.json"
-	summary_txt_path = metrics_dir / "aulc_summary.txt"
 
 	metrics_dir.mkdir(parents=True, exist_ok=True)
 	figures_dir.mkdir(parents=True, exist_ok=True)
@@ -51,18 +50,7 @@ def main() -> None:
 	summary = summarize_all_curves(steps, curves)
 
 	summary_json_path.write_text(json.dumps(summary, indent=2))
-	with summary_txt_path.open("w") as handle:
-		handle.write("AULC summary metrics\n")
-		handle.write("Note: AULC_above_final_observed uses the final observed validation loss as the baseline.\n\n")
-
-		for condition_name, metrics in summary.items():
-			handle.write(f"Condition: {condition_name}\n")
-			for metric_name, metric_value in metrics.items():
-				handle.write(f"{metric_name}: {metric_value}\n")
-			handle.write("\n")
-
 	print(f"Metrics written to: {summary_json_path}")
-	print(f"Metrics written to: {summary_txt_path}")
 
 	plt.figure()
 	for condition_name, loss_curve in curves.items():
@@ -74,10 +62,11 @@ def main() -> None:
 	plt.savefig(figures_dir / "loss_curves.png", dpi=200)
 
 	plt.figure()
-	labels = ["real", "shuf", "rand"]
-	values = [summary[label]["AULC_above_final_observed"] for label in labels]
+	labels = list(curves.keys())
+	values = [summary[label]["AULC_above_final"] for label in labels]
 	plt.bar(labels, values)
-	plt.ylabel("AULC above final observed loss")
+	plt.ylabel("AULC above final loss")
+	plt.xticks(rotation=30, ha="right")
 	plt.tight_layout()
 	plt.savefig(figures_dir / "aulc_bars.png", dpi=200)
 
@@ -86,3 +75,4 @@ def main() -> None:
 
 if __name__ == "__main__":
 	main()
+	
