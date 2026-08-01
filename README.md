@@ -1,39 +1,76 @@
-# Epiplexity Heuristic AULC Experiments
+# Epiplexity AULC Experiments
 
-This repository is for measuring epiplexity learnability from validation-loss trajectories on genomic sequence. The pipeline builds matched real and control datasets, trains a shared observer across conditions, logs per-condition validation curves, and summarizes those curves with AULC metrics.
+This repository contains pilot experiments for measuring epiplexity from genomic
+sequence learning dynamics. In this project, epiplexity is treated as a practical
+question: how much structure does a sequence region reveal to a small observer,
+and how quickly does that observer become better at predicting it?
 
-The codebase currently supports two observer backends:
+The current workflow trains the same sequence observer across multiple biological
+categories of microbial genomic windows, then compares the validation-loss curves
+for each category. Area-under-loss-curve summaries are used as a compact way to
+compare how learnable different genomic contexts are over training time.
 
-- `transformer`: a small causal Transformer baseline
-- `hyena`: a small causal Hyena language model for longer-range sequence modeling
+## Why target non-coding regions?
 
-## Current experiment design
+Protein-coding sequence has strong, well-known constraints: codons, open reading
+frames, amino-acid conservation, and selection on translated products. Those
+signals are useful, but they can also dominate a learnability experiment because
+the model may be rediscovering obvious coding grammar.
 
-Each experiment uses three sequence conditions:
+Non-coding regions are interesting for the opposite reason. They are not empty
+background. Intergenic sequence, RNA genes, pseudogenes, and annotation boundaries
+can carry regulatory signals, structural constraints, repeats, mobile-element
+signatures, composition biases, and species-specific organization. Much of that
+structure is subtler than a protein-coding frame, so it is a good place to ask
+whether epiplexity captures learnable biological organization beyond simple
+coding status.
 
-- `real`: sampled genomic windows from `.fna` inputs
-- `shuf`: dinucleotide-preserving shuffled controls derived from the real windows
-- `rand`: GC-matched i.i.d. random controls derived from the real windows
+The main comparison here is therefore not just "coding versus random." It is a
+more graded question: do different annotation contexts produce different
+learning trajectories when the observer architecture and training pressure are
+held fixed?
 
-The training loop uses one shared observer. At each optimization step, the script samples one of the three conditions uniformly, draws a batch from that condition, and trains under a next-token prediction objective. Validation is logged separately for `real`, `shuf`, and `rand`.
+## Current experiment
+
+The active microbial annotation pilot uses 512 bp windows assigned to six buckets:
+
+- `CDS_high`
+- `intergenic_high`
+- `RNA_enriched`
+- `pseudogene_enriched`
+- `boundary_mixed`
+- `mixed_other`
+
+`scripts/make_annotation_buckets.py` samples windows from bacterial FASTA/GFF
+inputs and assigns each window to a bucket from annotation overlap. The training
+script then expects bucketed train/validation sequence files under
+`data/processed/[experiment_id]/real_bucket_files/`.
+
+`scripts/train_observer.py` trains one shared observer while sampling uniformly
+across buckets. Validation loss is logged separately for every bucket, making the
+loss curves comparable across biological contexts. The supported observers are:
+
+- `transformer`: small causal Transformer baseline
+- `hyena`: small causal Hyena language model for longer-range sequence modeling
+
+`scripts/calc_aulc.py` summarizes each bucket's loss curve with:
+
+- initial and final validation loss
+- total loss reduction
+- half-drop step (`t50_step`)
+- raw AULC
+- AULC above the final observed loss
 
 ## Repository layout
 
 ```text
 README.md
-run_example.sh
-run_microbial_20k_2048bp_v1.sh	# not tracked; [experiment_id] = microbial_20k_2048bp_v1
-
-
-data/
-  README.md
-  raw/                   # not tracked
-  processed/             # not tracked
 
 scripts/
-  preprocess_data.py
+  make_annotation_buckets.py
   train_observer.py
   calc_aulc.py
+  plot_early_loss_curves.py
 
 src/
   data_utils.py
@@ -42,97 +79,46 @@ src/
   hyena_observer.py
   epiplexity_metrics.py
 
-outputs/                 # not tracked
-  [experiment_id]/
-    logs/
-    metrics/
-    figures/
-    ckpt/
+k8s/
+  storage.yaml
+  train-transformer.yaml
+  train-hyena.yaml
 ```
 
-Raw data, processed datasets, and outputs are excluded from Git. See `data/README.md` for the expected data layout.
+Raw data, processed datasets, model checkpoints, result folders, figures, local
+notes, and machine-specific files are intentionally kept out of Git.
 
-## Dependencies
+## Startup reminders
 
-The current code assumes a Python environment with:
+Create annotation metadata:
 
-- `torch`
-- `numpy`
-- `matplotlib`
-- `ushuffle`
-
-## Pipeline overview
-
-### 1. Preprocess data
-
-`scripts/preprocess_data.py`:
-
-- finds `.fna` files under `data/raw/`
-- samples fixed-length real genomic windows
-- generates matched shuffled and random controls
-- applies a shared train/validation split
-- writes processed text files and `meta.tsv`
-
-Expected processed dataset:
-
-```text
-data/processed/[experiment_id]/
-  real_train.txt
-  real_val.txt
-  shuf_train.txt
-  shuf_val.txt
-  rand_train.txt
-  rand_val.txt
-  meta.tsv
+```bash
+python scripts/make_annotation_buckets.py
 ```
 
-### 2. Train shared observer
+Train a local observer once the bucketed sequence files exist:
 
-`scripts/train_observer.py`:
-
-- loads one processed dataset
-- selects either the Transformer or Hyena observer
-- trains with next-token cross-entropy loss
-- logs a true pre-training validation evaluation at step `0`
-- evaluates `real`, `shuf`, and `rand` separately during training
-- optionally saves a final checkpoint
-
-Main outputs:
-
-```text
-outputs/[experiment_id]/
-  logs/loss_curves.csv
-  ckpt/[model]_observer.pt   # if --save_ckpt
+```bash
+python scripts/train_observer.py \
+  --experiment_id microbial_annotation_512bp_v1 \
+  --model transformer \
+  --seq_len 512
 ```
 
-Loss CSV schema:
+Summarize loss curves:
 
-```text
-step,loss_real,loss_shuf,loss_rand
+```bash
+python scripts/calc_aulc.py \
+  --experiment_id microbial_annotation_512bp_v1
 ```
 
-### 3. Compute AULC metrics and plots
+Plot the early Transformer/Hyena comparison:
 
-`scripts/calc_aulc.py` reads `logs/loss_curves.csv`, computes summary metrics, and writes:
-
-```text
-outputs/[experiment_id]/
-  metrics/aulc_summary.json
-  metrics/aulc_summary.txt
-  figures/loss_curves.png
-  figures/aulc_bars.png
+```bash
+python scripts/plot_early_loss_curves.py \
+  --experiment_id microbial_annotation_512bp_v1 \
+  --max_step 5000
 ```
 
-## Metrics currently reported
-
-For each condition, the current implementation reports:
-
-- `L0_pre`: validation loss before training begins
-- `L_start_obs`: first post-update validation loss
-- `LT_obs`: final observed validation loss
-- `delta_L_from_pre`: total loss reduction from pre-training to the final observed point
-- `delta_L_obs`: total loss reduction from the first observed post-update point to the final observed point
-- `t50_step_from_pre`: first logged step reaching half of the total drop from the pre-training baseline
-- `t50_step_obs`: first logged step reaching half of the total drop from the first post-update baseline
-- `AULC_raw`: trapezoidal area under the full logged validation-loss curve
-- `AULC_above_final_observed`: area between the loss curve and the final observed validation loss
+Kubernetes job manifests for the larger Transformer and Hyena runs live in
+`k8s/`.

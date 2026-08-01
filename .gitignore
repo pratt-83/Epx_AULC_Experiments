@@ -1,19 +1,47 @@
+# Allowlist repository contents.
+# Keep directories traversable so nested YAML files can be re-included.
+*
+!*/
+
+# Repository metadata and overview.
+!/.gitignore
+!/README.md
+
+# Source and scripts.
+!/src/
+!/src/**
+!/scripts/
+!/scripts/**
+
+# YAML configuration/manifests anywhere in the repo.
+!*.yml
+!*.yaml
+!**/*.yml
+!**/*.yaml
+
+# Sensitive files stay out even inside allowed directories.
+.env
+.env.*
+**/.env
+**/.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.csr
+id_rsa*
+id_ed25519*
+*secret*
+*secrets*
+*credential*
+*credentials*
+*token*
+
+# Local/system/build artifacts stay out even inside allowed directories.
 .DS_Store
+**/.DS_Store
 __pycache__/
+**/__pycache__/
 *.pyc
-
-data/raw/
-data/processed/
-outputs/
-
-*.out
-*.err
-
-run_microbial_*_2048bp_v1.sh
-run_smoke_test_v100_hyena.sh
-
-experiment documentation.docx
-experiment_documentation.html
-.DS_Store
-scripts/.DS_Store
-src/.DS_Store
+**/*.pyc
